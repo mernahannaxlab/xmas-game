@@ -1,0 +1,95 @@
+.stage {
+  position: relative;
+  width: min(260px, 72vw);
+  height: 320px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  margin-inline: auto;
+}
+
+.fatouta {
+  width: 220px;
+  height: 290px;
+  max-width: 100%;
+  transform-origin: bottom center;
+  transition: transform 0.2s;
+  overflow: visible;
+}
+
+.dancing {
+  animation: fatoutaBounce 0.45s infinite alternate ease-in-out;
+}
+
+.dancing .armLeft {
+  transform-origin: 55px 102px;
+  animation: waveLeft 0.45s infinite alternate ease-in-out;
+}
+
+.dancing .armRight {
+  transform-origin: 145px 102px;
+  animation: waveRight 0.45s infinite alternate ease-in-out;
+}
+
+@keyframes fatoutaBounce {
+  0% {
+    transform: translateY(0) scaleY(1) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-25px) scaleY(1.05) rotate(0deg);
+  }
+  100% {
+    transform: translateY(0) scaleY(0.95) rotate(3deg);
+  }
+}
+
+@keyframes waveLeft {
+  from {
+    transform: rotate(18deg);
+  }
+  to {
+    transform: rotate(-28deg);
+  }
+}
+
+@keyframes waveRight {
+  from {
+    transform: rotate(-18deg);
+  }
+  to {
+    transform: rotate(28deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dancing,
+  .dancing .armLeft,
+  .dancing .armRight {
+    animation: none;
+  }
+}
+
+.bubble {
+  position: absolute;
+  top: -8px;
+  right: -12px;
+  z-index: 2;
+  background: #ffffff;
+  border: 3px solid #2e7d32;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-weight: 700;
+  color: #1b5e20;
+  font-size: 1rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.bubbleShow {
+  opacity: 1;
+  transform: scale(1);
+}
