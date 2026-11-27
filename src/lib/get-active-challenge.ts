@@ -4,7 +4,7 @@ import type { Challenge } from '@/types';
 import { getLocalPublishedChallenge } from '@/lib/local-store';
 import { createClient } from '@/lib/supabase/server';
 
-const REMOTE_TIMEOUT_MS = 500;
+const REMOTE_TIMEOUT_MS = 1500;
 
 const CHALLENGE_COLUMNS =
   'id,title,description,instructions,hints,published,created_at,updated_at';
@@ -55,23 +55,40 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
+function isServerless(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV ||
+      process.env.LAMBDA_TASK_ROOT ||
+      process.cwd() === '/var/task',
+  );
+}
+
 /**
- * Fast active challenge lookup: local file first (instant), then a short
- * Supabase attempt so a hanging remote never blocks the player.
+ * Active challenge lookup.
+ * On serverless prefer Supabase (ephemeral /tmp local store is empty on cold start).
+ * Locally prefer the file store for fast admin iteration.
  */
 export async function getActiveChallenge(): Promise<{
   challenge: Challenge | null;
   storage?: 'local' | 'supabase';
 }> {
-  const local = await getLocalPublishedChallenge();
-  if (local) {
-    return { challenge: local, storage: 'local' };
+  if (isServerless()) {
+    const remote = await withTimeout(fetchRemoteChallenge(), REMOTE_TIMEOUT_MS);
+    if (remote) return { challenge: remote, storage: 'supabase' };
+
+    const local = await getLocalPublishedChallenge();
+    if (local) return { challenge: local, storage: 'local' };
+
+    return { challenge: null };
   }
 
+  const local = await getLocalPublishedChallenge();
+  if (local) return { challenge: local, storage: 'local' };
+
   const remote = await withTimeout(fetchRemoteChallenge(), REMOTE_TIMEOUT_MS);
-  if (remote) {
-    return { challenge: remote, storage: 'supabase' };
-  }
+  if (remote) return { challenge: remote, storage: 'supabase' };
 
   return { challenge: null };
 }

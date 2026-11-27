@@ -1,15 +1,13 @@
 /**
- * File-backed challenge store used when Supabase is missing tables / blocked by RLS.
- * Data lives in .data/challenges.json (gitignored).
+ * Challenge fallback store when Supabase is unavailable.
+ * - Local/dev: .data/challenges.json under the project root
+ * - Serverless: in-memory only (/var/task is read-only; /tmp is ephemeral)
  */
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Challenge } from '@/types';
-
-const DATA_DIR = path.join(process.cwd(), '.data');
-const STORE_PATH = path.join(DATA_DIR, 'challenges.json');
 
 export type ChallengeInput = {
   title: string;
@@ -19,16 +17,20 @@ export type ChallengeInput = {
   published?: boolean;
 };
 
-async function ensureStore(): Promise<Challenge[]> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const raw = await fs.readFile(STORE_PATH, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.map((row) => normalizeChallenge(row)) : [];
-  } catch {
-    await fs.writeFile(STORE_PATH, '[]', 'utf8');
-    return [];
-  }
+/** Statically scoped so Turbopack does not trace the whole project. */
+const DATA_DIR = path.join(process.cwd(), '.data');
+const STORE_PATH = path.join(DATA_DIR, 'challenges.json');
+
+let memoryStore: Challenge[] | null = null;
+
+function isServerless(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV ||
+      process.env.LAMBDA_TASK_ROOT ||
+      process.cwd() === '/var/task',
+  );
 }
 
 function normalizeChallenge(row: unknown): Challenge {
@@ -45,9 +47,59 @@ function normalizeChallenge(row: unknown): Challenge {
   };
 }
 
+/** Read-only: never creates directories. */
+async function readStoreQuietly(): Promise<Challenge[]> {
+  if (memoryStore) return [...memoryStore];
+  if (isServerless()) return [];
+
+  try {
+    const raw = await fs.readFile(/*turbopackIgnore: true*/ STORE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(normalizeChallenge) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function ensureStore(): Promise<Challenge[]> {
+  if (memoryStore) return [...memoryStore];
+
+  if (isServerless()) {
+    memoryStore = [];
+    return [];
+  }
+
+  try {
+    await fs.mkdir(/*turbopackIgnore: true*/ DATA_DIR, { recursive: true });
+    try {
+      const raw = await fs.readFile(/*turbopackIgnore: true*/ STORE_PATH, 'utf8');
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.map(normalizeChallenge) : [];
+    } catch {
+      await fs.writeFile(/*turbopackIgnore: true*/ STORE_PATH, '[]', 'utf8');
+      return [];
+    }
+  } catch (err) {
+    console.warn('Local store filesystem unavailable, using memory:', err);
+    memoryStore = [];
+    return [];
+  }
+}
+
 async function writeStore(rows: Challenge[]): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(STORE_PATH, JSON.stringify(rows, null, 2), 'utf8');
+  memoryStore = rows;
+  if (isServerless()) return;
+
+  try {
+    await fs.mkdir(/*turbopackIgnore: true*/ DATA_DIR, { recursive: true });
+    await fs.writeFile(
+      /*turbopackIgnore: true*/ STORE_PATH,
+      JSON.stringify(rows, null, 2),
+      'utf8',
+    );
+  } catch (err) {
+    console.warn('Local store write failed; kept in memory only:', err);
+  }
 }
 
 export async function listLocalChallenges(): Promise<Challenge[]> {
@@ -58,7 +110,7 @@ export async function listLocalChallenges(): Promise<Challenge[]> {
 }
 
 export async function getLocalPublishedChallenge(): Promise<Challenge | null> {
-  const rows = await listLocalChallenges();
+  const rows = await readStoreQuietly();
   return rows.find((c) => c.published) ?? null;
 }
 
