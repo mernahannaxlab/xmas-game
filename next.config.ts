@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
-  distDir: 'dist',
+  // Keep default `.next` — Vercel expects routes-manifest.json there.
   cacheComponents: true,
   partialPrefetching: true,
   // Parent folder has its own lockfile, so Turbopack was treating D:\projects
