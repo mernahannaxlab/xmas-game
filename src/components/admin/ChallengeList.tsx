@@ -4,7 +4,13 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import type { Challenge } from '@/types';
 
-export default function ChallengeList({ challenges }: { challenges: Challenge[] }) {
+interface Props {
+  challenges: Challenge[];
+  onEdit?: (challenge: Challenge) => void;
+  editingId?: string | null;
+}
+
+export default function ChallengeList({ challenges, onEdit, editingId = null }: Props) {
   const router = useRouter();
   const [list, setList] = useState(challenges);
   const [isPending, startTransition] = useTransition();
@@ -78,16 +84,32 @@ export default function ChallengeList({ challenges }: { challenges: Challenge[] 
       <ul className="flex flex-col gap-3">
         {list.map((c) => {
           const busy = busyId === c.id;
+          const isEditing = editingId === c.id;
           return (
             <li
               key={c.id}
-              className="flex flex-col gap-3 rounded-xl border border-red-900/30 bg-red-950/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className={`flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
+                isEditing
+                  ? 'border-yellow-600/50 bg-yellow-950/20'
+                  : 'border-red-900/30 bg-red-950/20'
+              }`}
             >
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-sm font-semibold text-yellow-200">{c.title}</span>
                 <span className="truncate text-xs text-red-400">{c.description}</span>
               </div>
-              <div className="flex flex-shrink-0 items-center gap-2">
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(c)}
+                    disabled={isPending}
+                    className="rounded-full bg-yellow-950/50 px-3 py-1 text-xs font-semibold text-yellow-300 transition hover:bg-yellow-900/50 disabled:opacity-50"
+                    aria-label={`تعديل ${c.title}`}
+                  >
+                    {isEditing ? 'جاري التعديل' : 'تعديل'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => togglePublish(c.id, c.published)}

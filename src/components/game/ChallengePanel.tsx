@@ -2,6 +2,7 @@
 
 import type { Challenge } from '@/types';
 import GlowCard from '@/components/ui/GlowCard';
+import { linkifyText } from '@/lib/linkify';
 
 export default function ChallengePanel({ challenge }: { challenge: Challenge }) {
   return (
@@ -23,8 +24,8 @@ export default function ChallengePanel({ challenge }: { challenge: Challenge }) 
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-green-400">
           التعليمات
         </h3>
-        <p className="text-sm leading-relaxed text-yellow-100" dir="rtl">
-          {challenge.instructions}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-yellow-100" dir="rtl">
+          {linkifyText(challenge.instructions)}
         </p>
       </div>
 
@@ -39,7 +40,7 @@ export default function ChallengePanel({ challenge }: { challenge: Challenge }) 
                 <span className="flex-shrink-0 text-yellow-500" aria-hidden="true">
                   💡
                 </span>
-                {hint}
+                <span className="whitespace-pre-wrap">{linkifyText(hint)}</span>
               </li>
             ))}
           </ul>

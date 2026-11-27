@@ -1,7 +1,5 @@
 import { connection } from 'next/server';
-import GlowCard from '@/components/ui/GlowCard';
-import ChallengeEditor from '@/components/admin/ChallengeEditor';
-import ChallengeList from '@/components/admin/ChallengeList';
+import ChallengesManager from '@/components/admin/ChallengesManager';
 import {
   allowLocalStoreFallback,
   createAdminClient,
@@ -67,15 +65,7 @@ export default async function ChallengesPage() {
         </div>
       )}
 
-      <GlowCard className="p-5" glow="red">
-        <h2 className="mb-4 text-base font-semibold text-yellow-200">تحدي جديد</h2>
-        <ChallengeEditor />
-      </GlowCard>
-
-      <GlowCard className="p-5" glow="gold">
-        <h2 className="mb-4 text-base font-semibold text-yellow-200">التحديات المتاحة</h2>
-        <ChallengeList challenges={challenges} />
-      </GlowCard>
+      <ChallengesManager challenges={challenges} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
+import type { Challenge } from '@/types';
 
 interface FormValues {
   title: string;
@@ -17,16 +17,39 @@ const EMPTY: FormValues = {
   hints: '',
 };
 
+function toValues(challenge: Challenge): FormValues {
+  return {
+    title: challenge.title,
+    description: challenge.description,
+    instructions: challenge.instructions,
+    hints: challenge.hints.join('\n'),
+  };
+}
+
 const FIELDS: {
   key: keyof FormValues;
   label: string;
   type: 'input' | 'textarea';
   placeholder: string;
   rows?: number;
+  hint?: string;
 }[] = [
   { key: 'title', label: 'عنوان التحدي', type: 'input', placeholder: 'مثلاً: زينة الشجرة' },
-  { key: 'description', label: 'الوصف', type: 'textarea', placeholder: 'وصف مختصر يظهر للاعبين', rows: 2 },
-  { key: 'instructions', label: 'التعليمات', type: 'textarea', placeholder: 'خطوات التحدي بالتفصيل', rows: 4 },
+  {
+    key: 'description',
+    label: 'الوصف',
+    type: 'textarea',
+    placeholder: 'وصف مختصر يظهر للاعبين',
+    rows: 2,
+  },
+  {
+    key: 'instructions',
+    label: 'التعليمات',
+    type: 'textarea',
+    placeholder: 'خطوات التحدي… ممكن تضيف رابط مثل https://example.com',
+    rows: 4,
+    hint: 'لو فيه رابط http/https هيظهر قابل للضغط عند اللاعبين',
+  },
   {
     key: 'hints',
     label: 'التلميحات (سطر لكل تلميح)',
@@ -36,12 +59,29 @@ const FIELDS: {
   },
 ];
 
-export default function ChallengeEditor() {
-  const router = useRouter();
-  const [values, setValues] = useState<FormValues>(EMPTY);
+interface Props {
+  editing?: Challenge | null;
+  onSaved?: () => void;
+  onCancelEdit?: () => void;
+}
+
+export default function ChallengeEditor({
+  editing = null,
+  onSaved,
+  onCancelEdit,
+}: Props) {
+  const [values, setValues] = useState<FormValues>(
+    editing ? toValues(editing) : EMPTY,
+  );
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    setValues(editing ? toValues(editing) : EMPTY);
+    setError('');
+    setSuccess(editing ? `تعديل: ${editing.title}` : '');
+  }, [editing]);
 
   const field = (key: keyof FormValues) => ({
     value: values[key],
@@ -58,21 +98,26 @@ export default function ChallengeEditor() {
     setError('');
     setSuccess('');
 
+    const payload = {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      instructions: values.instructions.trim(),
+      hints: values.hints
+        .split('\n')
+        .map((h) => h.trim())
+        .filter(Boolean),
+    };
+
     startTransition(async () => {
       try {
-        const res = await fetch('/api/admin/challenges', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: values.title.trim(),
-            description: values.description.trim(),
-            instructions: values.instructions.trim(),
-            hints: values.hints
-              .split('\n')
-              .map((h) => h.trim())
-              .filter(Boolean),
-          }),
-        });
+        const res = await fetch(
+          editing ? `/api/admin/challenges/${editing.id}` : '/api/admin/challenges',
+          {
+            method: editing ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          },
+        );
         const d = await res.json().catch(() => ({}));
         if (!res.ok) {
           setError([d.error, d.hint].filter(Boolean).join(' — ') || 'حدث خطأ');
@@ -80,13 +125,15 @@ export default function ChallengeEditor() {
         }
         if (d.storage === 'local') {
           setSuccess(
-            'تم الحفظ محلياً فقط — جدول challenges مش موجود/متاح في Supabase. شغّل schema.sql في SQL Editor.',
+            editing
+              ? 'تم التعديل محلياً فقط (مش Supabase).'
+              : 'تم الحفظ محلياً فقط — جدول challenges مش موجود/متاح في Supabase.',
           );
         } else {
-          setSuccess('تم الحفظ في Supabase كمسودة. انشره من القائمة عشان يظهر للاعبين.');
+          setSuccess(editing ? 'تم تحديث التحدي في Supabase.' : 'تم الحفظ في Supabase كمسودة.');
         }
-        setValues(EMPTY);
-        router.refresh();
+        if (!editing) setValues(EMPTY);
+        onSaved?.();
       } catch {
         setError('تعذر الحفظ');
       }
@@ -95,7 +142,22 @@ export default function ChallengeEditor() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate dir="rtl">
-      {FIELDS.map(({ key, label, type, placeholder, rows }) => (
+      {editing && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-yellow-800/40 bg-yellow-950/20 px-3 py-2 text-xs text-yellow-300">
+          <span>تعديل التحدي: {editing.title}</span>
+          {onCancelEdit && (
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="rounded-full bg-black/30 px-3 py-1 text-red-300 transition hover:text-red-200"
+            >
+              إلغاء
+            </button>
+          )}
+        </div>
+      )}
+
+      {FIELDS.map(({ key, label, type, placeholder, rows, hint }) => (
         <div key={key} className="flex flex-col gap-1">
           <label className="text-xs font-semibold tracking-wider text-red-300">{label}</label>
           {type === 'input' ? (
@@ -113,6 +175,7 @@ export default function ChallengeEditor() {
               {...field(key)}
             />
           )}
+          {hint && <p className="text-[11px] text-red-500">{hint}</p>}
         </div>
       ))}
 
@@ -132,7 +195,7 @@ export default function ChallengeEditor() {
         disabled={isPending}
         className="rounded-lg bg-gradient-to-r from-red-700 to-red-900 px-5 py-2 text-xs font-semibold text-yellow-200 shadow transition hover:from-red-600 hover:to-red-800 disabled:opacity-50"
       >
-        {isPending ? 'جاري الحفظ...' : 'حفظ التحدي'}
+        {isPending ? 'جاري الحفظ...' : editing ? 'حفظ التعديلات' : 'حفظ التحدي'}
       </button>
     </form>
   );

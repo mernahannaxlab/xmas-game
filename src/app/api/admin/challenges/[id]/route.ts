@@ -37,7 +37,18 @@ export async function PATCH(
   const { id } = await ctx.params;
   try {
     const body = await req.json();
-    const publishing = body.published === true;
+    const patch: Record<string, unknown> = {};
+    if (typeof body.title === 'string') patch.title = body.title;
+    if (typeof body.description === 'string') patch.description = body.description;
+    if (typeof body.instructions === 'string') patch.instructions = body.instructions;
+    if (Array.isArray(body.hints)) patch.hints = body.hints.map(String);
+    if (typeof body.published === 'boolean') patch.published = body.published;
+
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
+    }
+
+    const publishing = patch.published === true;
 
     if (hasAdminSupabaseConfig()) {
       try {
@@ -47,7 +58,7 @@ export async function PATCH(
           await supabase.from('challenges').update({ published: false }).neq('id', id);
         }
 
-        const { error } = await supabase.from('challenges').update(body).eq('id', id);
+        const { error } = await supabase.from('challenges').update(patch).eq('id', id);
         if (!error) {
           return NextResponse.json({ success: true, storage: 'supabase' });
         }
@@ -74,7 +85,7 @@ export async function PATCH(
       );
     }
 
-    const updated = await updateLocalChallenge(id, body, { exclusivePublish: publishing });
+    const updated = await updateLocalChallenge(id, patch, { exclusivePublish: publishing });
     if (!updated) {
       return NextResponse.json({ error: 'Challenge not found' }, { status: 404 });
     }
