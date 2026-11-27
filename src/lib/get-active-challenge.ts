@@ -2,9 +2,13 @@ import 'server-only';
 
 import type { Challenge } from '@/types';
 import { getLocalPublishedChallenge } from '@/lib/local-store';
-import { createClient } from '@/lib/supabase/server';
+import {
+  allowLocalStoreFallback,
+  createPublicClient,
+  hasSupabaseConfig,
+} from '@/lib/supabase/server';
 
-const REMOTE_TIMEOUT_MS = 1500;
+const REMOTE_TIMEOUT_MS = 2500;
 
 const CHALLENGE_COLUMNS =
   'id,title,description,instructions,hints,published,created_at,updated_at';
@@ -24,8 +28,9 @@ function normalize(row: Record<string, unknown> | null): Challenge | null {
 }
 
 async function fetchRemoteChallenge(): Promise<Challenge | null> {
+  if (!hasSupabaseConfig()) return null;
   try {
-    const supabase = await createClient();
+    const supabase = createPublicClient();
     const { data, error } = await supabase
       .from('challenges')
       .select(CHALLENGE_COLUMNS)
@@ -33,9 +38,13 @@ async function fetchRemoteChallenge(): Promise<Challenge | null> {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (error || !data) return null;
-    return normalize(data as Record<string, unknown>);
-  } catch {
+    if (error) {
+      console.error('Active challenge remote error:', error);
+      return null;
+    }
+    return normalize((data as Record<string, unknown> | null) ?? null);
+  } catch (err) {
+    console.error('Active challenge remote threw:', err);
     return null;
   }
 }
@@ -55,40 +64,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
-function isServerless(): boolean {
-  return Boolean(
-    process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.AWS_EXECUTION_ENV ||
-      process.env.LAMBDA_TASK_ROOT ||
-      process.cwd() === '/var/task',
-  );
-}
-
-/**
- * Active challenge lookup.
- * On serverless prefer Supabase (ephemeral /tmp local store is empty on cold start).
- * Locally prefer the file store for fast admin iteration.
- */
+/** Prefer Supabase; local file is a local/dev fallback only. */
 export async function getActiveChallenge(): Promise<{
   challenge: Challenge | null;
   storage?: 'local' | 'supabase';
 }> {
-  if (isServerless()) {
-    const remote = await withTimeout(fetchRemoteChallenge(), REMOTE_TIMEOUT_MS);
-    if (remote) return { challenge: remote, storage: 'supabase' };
-
-    const local = await getLocalPublishedChallenge();
-    if (local) return { challenge: local, storage: 'local' };
-
-    return { challenge: null };
-  }
-
-  const local = await getLocalPublishedChallenge();
-  if (local) return { challenge: local, storage: 'local' };
-
   const remote = await withTimeout(fetchRemoteChallenge(), REMOTE_TIMEOUT_MS);
   if (remote) return { challenge: remote, storage: 'supabase' };
+
+  if (allowLocalStoreFallback()) {
+    const local = await getLocalPublishedChallenge();
+    if (local) return { challenge: local, storage: 'local' };
+  }
 
   return { challenge: null };
 }

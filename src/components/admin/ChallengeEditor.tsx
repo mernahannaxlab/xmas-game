@@ -75,7 +75,7 @@ export default function ChallengeEditor() {
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(d.error ?? 'حدث خطأ');
+          setError([d.error, d.hint].filter(Boolean).join(' — ') || 'حدث خطأ');
           return;
         }
         if (d.storage === 'local') {

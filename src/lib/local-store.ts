@@ -199,8 +199,8 @@ export function shouldUseLocalStore(error: unknown): boolean {
     msg.includes('ssl') ||
     msg.includes('timeout') ||
     e.code === '42P01' ||
-    e.code === '42501' ||
     e.code === 'PGRST301' ||
     e.code === 'PGRST205'
   );
+  // Note: 42501 (permission denied) is NOT a local-store case — fix GRANTs / service role.
 }

@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin-auth';
-import { createClient } from '@/lib/supabase/server';
+import {
+  allowLocalStoreFallback,
+  createAdminClient,
+  hasAdminSupabaseConfig,
+} from '@/lib/supabase/server';
 import {
   createLocalChallenge,
   listLocalChallenges,
   shouldUseLocalStore,
 } from '@/lib/local-store';
+
+function supabaseFailure(error: unknown, action: string) {
+  const message =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: string }).message)
+      : String(error);
+  console.error(`Supabase ${action} failed:`, error);
+  return NextResponse.json(
+    {
+      error: `Supabase ${action} failed: ${message}`,
+      hint:
+        'Run src/lib/supabase/schema.sql in the SQL Editor. Set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY + SUPABASE_SECRET_KEY (sb_publishable_ / sb_secret_) in env.',
+    },
+    { status: 502 },
+  );
+}
 
 export async function POST(req: NextRequest) {
   const denied = await requireAdmin();
@@ -30,27 +50,39 @@ export async function POST(req: NextRequest) {
       published: false,
     };
 
-    try {
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from('challenges')
-        .insert(payload)
-        .select('id')
-        .single();
+    if (hasAdminSupabaseConfig()) {
+      try {
+        const supabase = createAdminClient();
+        const { data, error } = await supabase
+          .from('challenges')
+          .insert(payload)
+          .select('id')
+          .single();
 
-      if (!error && data?.id) {
-        return NextResponse.json({ id: data.id, storage: 'supabase' }, { status: 201 });
-      }
+        if (!error && data?.id) {
+          return NextResponse.json({ id: data.id, storage: 'supabase' }, { status: 201 });
+        }
 
-      console.error('Insert error:', error);
-      if (!shouldUseLocalStore(error)) {
-        return NextResponse.json(
-          { error: error?.message ?? 'Failed to create challenge' },
-          { status: 500 },
-        );
+        if (!allowLocalStoreFallback() || !shouldUseLocalStore(error)) {
+          return supabaseFailure(error, 'insert');
+        }
+        console.warn('Falling back to local store after insert error:', error);
+      } catch (err) {
+        if (!allowLocalStoreFallback()) {
+          return supabaseFailure(err, 'insert');
+        }
+        console.warn('Supabase insert threw, using local store:', err);
       }
-    } catch (err) {
-      console.error('Supabase insert threw, using local store:', err);
+    }
+
+    if (!allowLocalStoreFallback()) {
+      return NextResponse.json(
+        {
+          error:
+            'Missing SUPABASE_SECRET_KEY (sb_secret_…). Add it in Vercel / .env.local — local store is disabled in production.',
+        },
+        { status: 500 },
+      );
     }
 
     const local = await createLocalChallenge(payload);
@@ -66,22 +98,38 @@ export async function GET() {
   if (denied) return denied;
 
   try {
-    try {
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from('challenges')
-        .select('*')
-        .order('created_at', { ascending: false });
+    if (hasAdminSupabaseConfig()) {
+      try {
+        const supabase = createAdminClient();
+        const { data, error } = await supabase
+          .from('challenges')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      if (!error) {
-        return NextResponse.json({ challenges: data ?? [] });
+        if (!error) {
+          return NextResponse.json({ challenges: data ?? [], storage: 'supabase' });
+        }
+
+        if (!allowLocalStoreFallback() || !shouldUseLocalStore(error)) {
+          return supabaseFailure(error, 'list');
+        }
+        console.warn('Falling back to local store after list error:', error);
+      } catch (err) {
+        if (!allowLocalStoreFallback()) {
+          return supabaseFailure(err, 'list');
+        }
+        console.warn('Supabase list threw, using local store:', err);
       }
-      console.error('Fetch challenges error:', error);
-      if (!shouldUseLocalStore(error)) {
-        return NextResponse.json({ error: 'Failed to fetch challenges' }, { status: 500 });
-      }
-    } catch (err) {
-      console.error('Supabase fetch threw, using local store:', err);
+    }
+
+    if (!allowLocalStoreFallback()) {
+      return NextResponse.json(
+        {
+          error:
+            'Missing SUPABASE_SECRET_KEY (sb_secret_…). Add it in Vercel / .env.local — local store is disabled in production.',
+        },
+        { status: 500 },
+      );
     }
 
     const challenges = await listLocalChallenges();
