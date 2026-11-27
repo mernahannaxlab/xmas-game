@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/admin-auth';
 import { createClient } from '@/lib/supabase/server';
 import {
   deleteLocalChallenge,
@@ -10,6 +11,9 @@ export async function PATCH(
   req: NextRequest,
   ctx: RouteContext<'/api/admin/challenges/[id]'>,
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { id } = await ctx.params;
   try {
     const body = await req.json();
@@ -50,6 +54,9 @@ export async function DELETE(
   _req: NextRequest,
   ctx: RouteContext<'/api/admin/challenges/[id]'>,
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { id } = await ctx.params;
   try {
     try {
