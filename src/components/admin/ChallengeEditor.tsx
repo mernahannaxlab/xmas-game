@@ -73,12 +73,18 @@ export default function ChallengeEditor() {
               .filter(Boolean),
           }),
         });
+        const d = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
           setError(d.error ?? 'حدث خطأ');
           return;
         }
-        setSuccess('تم حفظ التحدي كمسودة. انشره من القائمة عشان يظهر للاعبين.');
+        if (d.storage === 'local') {
+          setSuccess(
+            'تم الحفظ محلياً فقط — جدول challenges مش موجود/متاح في Supabase. شغّل schema.sql في SQL Editor.',
+          );
+        } else {
+          setSuccess('تم الحفظ في Supabase كمسودة. انشره من القائمة عشان يظهر للاعبين.');
+        }
         setValues(EMPTY);
         router.refresh();
       } catch {

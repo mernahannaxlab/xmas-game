@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (!error && data?.id) {
-        return NextResponse.json({ id: data.id }, { status: 201 });
+        return NextResponse.json({ id: data.id, storage: 'supabase' }, { status: 201 });
       }
 
       console.error('Insert error:', error);
